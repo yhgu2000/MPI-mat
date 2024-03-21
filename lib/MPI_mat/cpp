@@ -1,0 +1,19 @@
+/**
+ * @brief 这个文件用于辅助跨平台编译，是最底层的包含文件
+ */
+
+#pragma once
+
+#include <cstdint>
+
+#ifndef _MSC_VER
+
+#include <unistd.h>
+
+inline std::int64_t
+get_pid()
+{
+  return getpid();
+}
+
+#endif // _MSC_VER

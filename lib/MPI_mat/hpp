@@ -1,0 +1,8 @@
+/**
+ * @brief 这个文件为库的总包含文件
+ */
+
+#pragma once
+
+#include "lib.hpp"
+#include "mpi.hpp"
