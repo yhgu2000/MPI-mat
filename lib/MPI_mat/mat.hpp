@@ -165,6 +165,18 @@ public:
   MatFile() noexcept {}
 
   /**
+   * @param path 矩阵文件路径，从中读取行数和列数
+   */
+  MatFile(std::string path)
+    : mPath(std::move(path))
+  {
+    My::CFile64 file(mPath.c_str(), "r+");
+    My::CFile64::Closer closer(file);
+    file.read(&mRown, sizeof(std::uint32_t), 1);
+    file.read(&mColn, sizeof(std::uint32_t), 1);
+  }
+
+  /**
    * @param path 矩阵文件路径
    * @param rown 矩阵行数
    * @param coln 矩阵列数
@@ -176,16 +188,22 @@ public:
   {
   }
 
+  struct CreateOnly
+  {};
+
   /**
-   * @param path 矩阵文件路径，从中读取行数和列数
+   * @param path 矩阵文件路径
+   * @param rown 矩阵行数
+   * @param coln 矩阵列数
    */
-  MatFile(std::string path)
-    : mPath(std::move(path))
+  MatFile(std::string path, std::uint32_t rown, std::uint32_t coln, CreateOnly)
+    : MatFile(path, rown, coln)
   {
-    My::CFile64 file(mPath.c_str(), "r+");
+    My::CFile64 file(mPath.c_str(), "w");
     My::CFile64::Closer closer(file);
-    file.read(&mRown, sizeof(std::uint32_t), 1);
-    file.read(&mColn, sizeof(std::uint32_t), 1);
+    file.write(&mRown, sizeof(rown), 1);
+    file.write(&mColn, sizeof(coln), 1);
+    file.trunc(sizeof(rown) + sizeof(coln) + sizeof(double) * size());
   }
 
 public:

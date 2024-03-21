@@ -20,11 +20,11 @@ target_include_directories(timestamp INTERFACE ${CMAKE_CURRENT_BINARY_DIR})
 #
 add_executable(mat mat.cpp)
 
-target_link_libraries(mat PUBLIC PGEMM Boost::program_options)
+target_link_libraries(mat PUBLIC timestamp MPI_mat Boost::program_options)
 
 #
 # MPI 矩阵程序
 #
 add_executable(mpimat mpimat.cpp)
 
-target_link_libraries(mpimat PUBLIC PGEMM Boost::program_options)
+target_link_libraries(mpimat PUBLIC timestamp MPI_mat Boost::program_options)

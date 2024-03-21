@@ -18,7 +18,8 @@ Checks: "-*\
   ,-modernize-use-trailing-return-type\
   ,-modernize-use-nodiscard\
   ,-modernize-avoid-c-arrays\
-  ,-readability-isolate-declaration"
+  ,-readability-isolate-declaration\
+  ,-performance-avoid-endl"
   # TODO clang-tidy 在 17 版本后支持以列表形式书写，过两年就改进！
 
 CheckOptions:

@@ -71,7 +71,7 @@ dot_direct_load(const MatFile& a, const MatFile& b, MatFile& c)
   gTiming("load", __finishLoad - __startLoad);
 
   auto __startCalc = HRC::now();
-  auto pc = pa * pb;
+  auto pc = pa.dot(pb);
   auto __finishCalc = HRC::now();
   gTiming("calc", __finishCalc - __startCalc);
 
@@ -108,6 +108,7 @@ dot_grid_bcast(const MatFile& a, const MatFile& b, MatFile& c)
 
   std::vector<Mat> aRowMats(n);
   std::vector<Mat> bColMats(n);
+  aRowMats[x] = Mat(prown, pcoln), bColMats[y] = Mat(prown, pcoln);
   for (std::uint32_t i = 0; i < n; ++i) {
     if (i != x)
       aRowMats[i] = Mat(prown, (side * (i + 1) / n) - (side * i / n));
@@ -148,9 +149,9 @@ dot_grid_bcast(const MatFile& a, const MatFile& b, MatFile& c)
   gTiming("comm", __finishComm - __startLoad);
 
   auto __startCalc = HRC::now();
-  Mat pc = aRowMats[0] * bColMats[0];
+  Mat pc = aRowMats[0].dot(bColMats[0]);
   for (std::uint32_t i = 1; i < n; ++i)
-    pc += aRowMats[i] * bColMats[i];
+    pc += aRowMats[i].dot(bColMats[i]);
   auto __finishCalc = HRC::now();
   gTiming("calc", __finishCalc - __startCalc);
 
@@ -271,9 +272,9 @@ dot_row_bcast(const MatFile& a, const MatFile& b, MatFile& c)
   gTiming("comm", __finishComm - __startLoad);
 
   auto __startCalc = HRC::now();
-  Mat pc = aRowMats[0] * bColMats[0];
+  Mat pc = aRowMats[0].dot(bColMats[0]);
   for (std::uint32_t i = 1; i < n; ++i)
-    pc += aRowMats[i] * bColMats[i];
+    pc += aRowMats[i].dot(bColMats[i]);
   auto __finishCalc = HRC::now();
   gTiming("calc", __finishCalc - __startCalc);
 
@@ -395,7 +396,7 @@ dot_cannon(const MatFile& a, const MatFile& b, MatFile& c)
   auto pL = y * n + (x - 1 + n) % n, pR = y * n + (x + 1) % n;
   auto pU = (y - 1 + n) % n * n + x, pD = (y + 1) % n * n + x;
 
-  Mat pc = pa * pb;
+  Mat pc = pa.dot(pb);
   for (std::uint32_t i = 1; i < n; ++i) {
     auto tag = (side << 2) + i;
     auto reqa = worldComm.isend(pa.mData, pa.size(), MPI_DOUBLE, pL, tag);
@@ -411,7 +412,7 @@ dot_cannon(const MatFile& a, const MatFile& b, MatFile& c)
 
     pa = std::move(ta);
     pb = std::move(tb);
-    pc += pa * pb;
+    pc += pa.dot(pb);
   }
   auto __finishCalc = HRC::now();
   gTiming("calc", __finishCalc - __startCalc);
@@ -473,7 +474,7 @@ dot_dns(const MatFile& a, const MatFile& b, MatFile& c, int k)
   gTiming("load", __finishLoad - __startLoad);
 
   auto __startCalc = HRC::now();
-  auto pc = pa * pb;
+  auto pc = pa.dot(pb);
   auto __finishCalc = HRC::now();
   gTiming("calc", __finishCalc - __startCalc);
 
