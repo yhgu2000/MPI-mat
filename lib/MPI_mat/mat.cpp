@@ -151,6 +151,27 @@ Mat::sum() const noexcept
   return sum;
 }
 
+Mat
+Mat::operator()(std::uint32_t row,
+                std::uint32_t rowE,
+                std::uint32_t col,
+                std::uint32_t colE) const noexcept
+{
+  assert(row < rowE && rowE <= mRown);
+  assert(col < colE && colE <= mColn);
+
+  Mat ans(rowE - row, colE - col);
+
+#pragma omp parallel for
+  for (std::uint32_t r = 0; r < ans.mRown; ++r) {
+    auto p = &self(row + r, col);
+    auto q = &ans(r, 0);
+    memcpy(q, p, sizeof(double) * ans.mColn);
+  }
+
+  return ans;
+}
+
 Mat&
 Mat::fill(double value) noexcept
 {

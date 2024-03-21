@@ -8,8 +8,7 @@ if(NOT _env_cmake_found)
   include(default.env.cmake)
 endif()
 
-# 这里应使用 CamelCase 以贴合 cmake 导出文件的命名风格
-project(UnnamedProject VERSION 0.0.0.0)
+project(MPI_mat VERSION 0.0.0.0)
 include(CTest) # CTest 需要在顶层包含
 
 # 安装导出目标名

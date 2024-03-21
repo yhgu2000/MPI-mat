@@ -10,7 +10,7 @@ target_compile_definitions(test+MPI_mat+mat
 
 add_test(NAME MPI_mat+mat COMMAND test+MPI_mat+mat)
 
-target_code_coverage(test+MPI_mat+mat)
+target_code_coverage(test+MPI_mat+mat AUTO ALL)
 
 #
 # mpi 测试
@@ -22,4 +22,4 @@ target_compile_definitions(test+MPI_mat+mpi
 
 add_test(NAME MPI_mat+mpi COMMAND test+MPI_mat+mpi)
 
-target_code_coverage(test+MPI_mat+mpi)
+target_code_coverage(test+MPI_mat+mpi AUTO ALL)

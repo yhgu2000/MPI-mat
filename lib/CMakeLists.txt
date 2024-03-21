@@ -19,7 +19,7 @@ install(
   TYPE INCLUDE
   PATTERN "*.cpp" EXCLUDE)
 
-target_code_coverage(My)
+target_code_coverage(My AUTO ALL)
 
 #
 # MPI-mat
@@ -39,3 +39,5 @@ install(
   DIRECTORY MPI_mat
   TYPE INCLUDE
   PATTERN "*.cpp" EXCLUDE)
+
+target_code_coverage(MPI_mat AUTO ALL)

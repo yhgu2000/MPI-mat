@@ -101,6 +101,12 @@ public:
     return mData[row * mColn + col];
   }
 
+  /// 截取子矩阵
+  Mat operator()(std::uint32_t row,
+                 std::uint32_t rowE,
+                 std::uint32_t col,
+                 std::uint32_t colE) const noexcept;
+
   /// 元素数量
   std::uint64_t size() const noexcept { return std::uint64_t(mRown) * mColn; }
 
@@ -195,7 +201,7 @@ public:
   /**
    * @brief 从文件中加载整个矩阵
    *
-   * @param[out] mat 输出矩阵，必须有足够的空间
+   * @param[out] mat 输出矩阵
    */
   void load(Mat& mat);
 
