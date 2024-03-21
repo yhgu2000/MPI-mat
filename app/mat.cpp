@@ -101,8 +101,10 @@ gen(int argc, char* argv[])
     mat.eye();
   else if (method == "fill")
     mat.fill(fill);
-  else
+  else {
+    std::cout << "invalid method '" << method << "'." << std::endl;
     return 1;
+  }
 
   MPI_mat::MatFile mf(oPath, rown, coln);
   mf.dump(mat);
@@ -154,7 +156,7 @@ mul(int argc, char* argv[])
 {
   std::string oPath, lPath, rPath;
   {
-    po::options_description od("'add' Options");
+    po::options_description od("'mul' Options");
     od.add_options()                                           //
       ("help,h", "show help info")                             //
       ("output,o", povd(oPath), "output file path")            //
@@ -194,7 +196,7 @@ dot(int argc, char* argv[])
 {
   std::string oPath, lPath, rPath;
   {
-    po::options_description od("'add' Options");
+    po::options_description od("'dot' Options");
     od.add_options()                                           //
       ("help,h", "show help info")                             //
       ("output,o", povr(oPath), "output file path")            //
@@ -234,7 +236,7 @@ powsum(int argc, char* argv[])
 {
   std::uint32_t size = 128, pown = 16;
   {
-    po::options_description od("'dot' Options");
+    po::options_description od("'powsum' Options");
     od.add_options()                                           //
       ("help,h", "show help info")                             //
       ("size,s", povd(size), "matrix size (width and height)") //

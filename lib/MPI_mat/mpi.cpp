@@ -30,6 +30,20 @@ timing_noting(const char* tag, const HRC::duration& dura)
 TimingFunc gTiming = &timing_noting;
 
 void
+gen_fill(const MatFile& matFile, double fill)
+{
+  auto prow = matFile.mRown * world.mRank / world.mSize;
+  auto prown = matFile.mRown * (world.mRank + 1) / world.mSize - prow;
+
+  Mat mat(prown, matFile.mColn);
+  mat.fill(fill);
+  matFile.dump(prow, mat);
+
+  if (world.mRank == 0)
+    matFile.dump_head();
+}
+
+void
 gen_rand(const MatFile& matFile)
 {
   auto prow = matFile.mRown * world.mRank / world.mSize;
@@ -384,7 +398,7 @@ dot_cannon(const MatFile& a, const MatFile& b, MatFile& c)
     pb = std::move(tb);
   }
   auto __finishComm = HRC::now();
-  gTiming("comm", __finishComm - __startLoad);
+  gTiming("comm", __finishComm - __startComm);
 
   // {
   //   std::ostringstream sout;
@@ -535,6 +549,108 @@ dot_dns(const MatFile& a, const MatFile& b, MatFile& c, int k)
     c.dump_head();
   auto __finishDump = HRC::now();
   gTiming("dump", __finishDump - __startDump);
+}
+
+double
+powsum_benchmark(std::uint32_t size, std::uint32_t pown)
+{
+  auto n = int(std::sqrt(world.mSize));
+  assert((n * n == world.mSize) &&
+         "MPI processe amount must be a square number!");
+
+  auto side = size;
+  auto y = world.mRank / n, x = world.mRank % n;
+
+  auto prow = side * y / n;
+  auto pcol = side * x / n;
+  auto prown = side * (y + 1) / n - prow;
+  auto pcoln = side * (x + 1) / n - pcol;
+
+  Comm worldComm(MPI_COMM_WORLD);
+
+  auto __startInit = HRC::now();
+  Mat pa(prown, pcoln), pb(prown, pcoln);
+  pa.fill(1.0 / size), pb.fill(1.0 / size);
+  auto __finishInit = HRC::now();
+  gTiming("init", __finishInit - __startInit);
+
+  // {
+  //   std::ostringstream sout;
+  //   sout << '[' << world.mRank << ']' << pa << '\n' << pb << '\n';
+  //   std::cout << sout.str() << std::flush;
+  // }
+
+  // 起始对准
+  auto __startComm = HRC::now();
+  auto xyRD = (x + y) % n;
+  {
+    auto xL = (x - y + n) % n, yU = (y - x + n) % n;
+
+    auto reqa =
+      worldComm.isend(pa.mData, pa.size(), MPI_DOUBLE, y * n + xL, side << 2);
+    auto reqb =
+      worldComm.isend(pb.mData, pb.size(), MPI_DOUBLE, yU * n + x, side << 2);
+
+    auto acoln = (side * (xyRD + 1) / n) - (side * xyRD / n);
+    Mat ta(prown, acoln), tb(acoln, pcoln);
+    worldComm.recv(ta.mData, ta.size(), MPI_DOUBLE, y * n + xyRD, side << 2);
+    worldComm.recv(tb.mData, tb.size(), MPI_DOUBLE, xyRD * n + x, side << 2);
+
+    Err::check(MPI_Wait(&reqa, MPI_STATUS_IGNORE));
+    Err::check(MPI_Wait(&reqb, MPI_STATUS_IGNORE));
+
+    pa = std::move(ta);
+    pb = std::move(tb);
+  }
+  auto __finishComm = HRC::now();
+  gTiming("comm", __finishComm - __startComm);
+
+  // {
+  //   std::ostringstream sout;
+  //   sout << '[' << world.mRank << ']' << pa << '\n' << pb << '\n';
+  //   std::cout << sout.str() << std::flush;
+  // }
+
+  auto __startCalc = HRC::now();
+  auto pL = y * n + (x - 1 + n) % n, pR = y * n + (x + 1) % n;
+  auto pU = (y - 1 + n) % n * n + x, pD = (y + 1) % n * n + x;
+  Mat pc(prown, pcoln);
+  while (--pown != UINT32_MAX) {
+    pc.zero();
+    for (std::uint32_t i = 0; i < n; ++i) {
+      auto tag = (side << 2) + i;
+      auto reqa = worldComm.isend(pa.mData, pa.size(), MPI_DOUBLE, pL, tag);
+      auto reqb = worldComm.isend(pb.mData, pb.size(), MPI_DOUBLE, pU, tag);
+
+      auto acoln = (side * (xyRD + i + 1) / n) - (side * (xyRD + i) / n);
+      Mat ta(prown, acoln), tb(acoln, pcoln);
+      worldComm.recv(ta.mData, ta.size(), MPI_DOUBLE, pR, tag);
+      worldComm.recv(tb.mData, tb.size(), MPI_DOUBLE, pD, tag);
+
+      Err::check(MPI_Wait(&reqa, MPI_STATUS_IGNORE));
+      Err::check(MPI_Wait(&reqb, MPI_STATUS_IGNORE));
+
+      pa = std::move(ta);
+      pb = std::move(tb);
+      pc += pa.dot(pb);
+    }
+    swap(pa, pc);
+  }
+  auto __finishCalc = HRC::now();
+  gTiming("pow", __finishCalc - __startCalc);
+
+  auto __startSum = HRC::now();
+  auto psum = pa.sum();
+  double ans = 0;
+  for (std::uint32_t i = 0; i < world.mSize; ++i) {
+    double t = psum;
+    worldComm.bcast(&t, 1, MPI_DOUBLE, i);
+    ans += t;
+  }
+  auto __finishSum = HRC::now();
+  gTiming("sum", __finishSum - __startSum);
+
+  return ans;
 }
 
 } // namespace MPI_mat::mpi

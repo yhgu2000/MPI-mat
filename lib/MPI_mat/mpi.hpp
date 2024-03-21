@@ -197,9 +197,11 @@ timing_noting(const char* tag, const HRC::duration& dura);
 /// 全局计时函数。
 extern TimingFunc gTiming;
 
-/**
- * 使用 MPI 多进程地在 outpath 中生成随机大矩阵，outpath 文件必须已存在。
- */
+/// 将 \p matFile 全置为 \p fill ， \p matfile 文件必须存在。
+void
+gen_fill(const MatFile& matFile, double fill);
+
+/// 为 \p matFile 随机赋值， \p matfile 文件必须存在。
 void
 gen_rand(const MatFile& matFile);
 
@@ -234,5 +236,15 @@ dot_cannon(const MatFile& a, const MatFile& b, MatFile& c);
  */
 void
 dot_dns(const MatFile& a, const MatFile& b, MatFile& c, int k);
+
+/**
+ * @brief 乘幂求和基准测试，使用 Cannon 算法。
+ * 
+ * @param size 矩阵大小
+ * @param pown 乘幂次数
+ * @return double 求和结果
+ */
+double
+powsum_benchmark(std::uint32_t size, std::uint32_t pown);
 
 } // namespace MPI_mat::mpi

@@ -1,200 +1,213 @@
 #include "project.h"
-#include <PGEMM/hpp>
+#include "timestamp.h"
+
+static const char kVersionInfo[] =
+  "Matrix Algorithm Program (MPI)\n"
+  "\n"
+  "Built: " MPI_mat_TIMESTAMP "\n"
+  "Project: " MPI_mat_VERSION "\n"
+  "Copyright (C) 2023-2024 Yuhao Gu. All Rights Reserved.";
+
+#include "po.hpp"
+
+#include <MPI_mat/hpp>
+#include <My/Timing.hpp>
+#include <My/util.hpp>
 #include <boost/program_options.hpp>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 
-using namespace std::string_literals;
-
+using namespace My::util;
 namespace po = boost::program_options;
 
-/**
- * @brief 以易读形式输出时间间隔
- */
-template<typename R, typename P>
-static std::ostream&
-operator<<(std::ostream& out, const std::chrono::duration<R, P>& dura)
-{
-  out << std::fixed << std::setprecision(2);
-  double count =
-    std::chrono::duration_cast<std::chrono::nanoseconds>(dura).count();
-  if (count < 10000)
-    out << count << "ns";
-  else if ((count /= 1000) < 10000)
-    out << count << "us";
-  else if ((count /= 1000) < 10000)
-    out << count << "ms";
-  else
-    out << count / 1000 << "s";
-  return out;
-}
+namespace {
 
 int
 gen(int argc, char* argv[])
 {
-  po::options_description od("Options");
-  od.add_options()                                                 //
-    ("help,h", "print help info")                                  //
-    ("output,o", po::value<std::string>(), "output path")          //
-    ("rown,r", po::value<std::uint32_t>(), "row number, height")   //
-    ("coln,c", po::value<std::uint32_t>(), "column number, width") //
-    ("method,m",                                                   //
-     po::value<std::string>()->default_value("rand"),              //
-     "generation method: rand / zero / eye")                       //
-    ;
+  std::string oPath;
+  std::uint32_t rown, coln;
+  std::string method = "rand";
+  double fill = 0.0;
+  {
+    po::options_description od("'gen' Options");
+    od.add_options()                                               //
+      ("help,h", "print help info")                                //
+      ("output,o", povr(oPath), "output file path")                //
+      ("rown,r", povr(rown), "row number, height")                 //
+      ("coln,c", povr(coln), "column number, width")               //
+      ("method,m", povd(method), "generation method: rand / fill") //
+      ("fill,f", povd(fill), "fill value")                         //
+      ;
 
-  po::positional_options_description pod;
-  pod.add("output", 1);
+    po::positional_options_description pod;
+    pod.add("output", 1);
+    pod.add("rown", 1);
+    pod.add("coln", 1);
 
-  po::variables_map vmap;
-  po::store(po::command_line_parser(argc, argv)
-              .options(od)
-              .positional(pod)
-              .allow_unregistered()
-              .run(),
-            vmap);
-  po::notify(vmap);
+    po::variables_map vmap;
+    po::store(
+      po::command_line_parser(argc, argv).options(od).positional(pod).run(),
+      vmap);
 
-  if (vmap.count("help") || argc == 1) {
-    std::cout << od << std::endl;
-    return 0;
+    if (vmap.count("help") || argc == 1) {
+      std::cout << od << std::endl;
+      return 0;
+    }
+    po::notify(vmap);
   }
 
-  auto outpath = vmap["output"].as<std::string>();
-  auto rown = vmap["rown"].as<std::uint32_t>();
-  auto coln = vmap["coln"].as<std::uint32_t>();
-  auto method = vmap["method"].as<std::string>();
+  MPI_mat::MatFile mf(oPath, rown, coln, MPI_mat::MatFile::CreateOnly());
 
   if (method == "rand")
-    // MPI_mat::mpi::gen_rand(outpath.c_str(), rown, coln);
-    MPI_mat::mpi::gen_rand(MPI_mat::MatFile(std::move(outpath), rown, coln));
-  else
-    // TODO
+    MPI_mat::mpi::gen_rand(mf);
+  else if (method == "fill")
+    MPI_mat::mpi::gen_fill(mf, fill);
+  else {
+    std::cout << "invalid method '" << method << "'." << std::endl;
     return 1;
+  }
+
   return 0;
 }
 
 int
-mul(int argc, char* argv[])
+dot(int argc, char* argv[])
 {
-  po::options_description od("'mul' Options");
-  od.add_options()                                                         //
-    ("help,h", "show help info")                                           //
-    ("output,o", po::value<std::string>(), "output file path, must exist") //
-    ("lft,l", po::value<std::string>(), "left operand matrix file path")   //
-    ("rht,r", po::value<std::string>(), "right operand matrix file path")  //
-    ("method,m",                                                           //
-     po::value<std::string>()->default_value("direct_load"),               //
-     "direct_load / grid_bcast / row_bcast / cannon / dns")                //
-    ("timing,t", "enable internal timing")                                 //
-    ("dns_k",                                                              //
-     po::value<int>()->default_value(1),                                   //
-     "k parameter of dns method")                                          //
-    ;
+  std::string oPath, lPath, rPath;
+  std::string method = "cannon";
+  int dnsK = 1;
+  {
+    po::options_description od("'dot' Options");
+    od.add_options()                                           //
+      ("help,h", "show help info")                             //
+      ("output,o", povr(oPath), "output file path")            //
+      ("lft,l", povr(lPath), "left operand matrix file path")  //
+      ("rht,r", povr(rPath), "right operand matrix file path") //
+      ("method,m",                                             //
+       povd(method),                                           //
+       "direct_load / grid_bcast / row_bcast / cannon / dns")  //
+      ("dns_k", povd(dnsK), "k parameter of dns method")       //
+      ;
 
-  po::positional_options_description pod;
-  pod.add("output", 1);
+    po::positional_options_description pod;
+    pod.add("output", 1);
+    pod.add("lft", 1);
+    pod.add("rht", 1);
 
-  po::variables_map vmap;
-  po::store(
-    po::command_line_parser(argc, argv).options(od).positional(pod).run(),
-    vmap);
-  po::notify(vmap);
+    po::variables_map vmap;
+    po::store(
+      po::command_line_parser(argc, argv).options(od).positional(pod).run(),
+      vmap);
 
-  if (vmap.count("help") || argc == 1) {
-    std::cout << od << std::endl;
-    return 0;
+    if (vmap.count("help") || argc == 1) {
+      std::cout << od << std::endl;
+      return 0;
+    }
+    po::notify(vmap);
   }
-
-  bool timingEnabled = vmap.count("timing");
-  std::unique_ptr<std::ostringstream> soutPtr;
-  MPI_mat::mpi::TimingFunc timing;
-  if (timingEnabled) {
-    soutPtr = std::make_unique<std::ostringstream>();
-    auto& sout = *soutPtr;
-    sout << '[' << MPI_mat::mpi::World::gRank << '/' << MPI_mat::mpi::World::gSize
-         << ']';
-    timing = [&](const char* tag, const MPI_mat::mpi::HRC::duration& dura) {
-      sout << '\t' << tag << '(' << dura << ')';
-    };
-  } else
-    timing = MPI_mat::mpi::timing_noting;
 
   auto __startTotal = MPI_mat::mpi::HRC::now();
+  MPI_mat::MatFile outmat(oPath, 0, 0, MPI_mat::MatFile::CreateOnly());
 
-  auto lft = vmap["lft"].as<std::string>();
-  auto rht = vmap["rht"].as<std::string>();
-  auto output = vmap["output"].as<std::string>();
-  MPI_mat::MatFile outmat(std::move(output), 0, 0);
+  MPI_mat::MatFile lft(lPath), rht(rPath);
 
-  auto method = vmap["method"].as<std::string>();
   if (method == "direct_load")
-    MPI_mat::mpi::mul_direct_load(MPI_mat::MatFile(std::move(lft)),
-                                MPI_mat::MatFile(std::move(rht)),
-                                outmat,
-                                timing);
-
+    MPI_mat::mpi::dot_direct_load(lft, rht, outmat);
   else if (method == "grid_bcast")
-    MPI_mat::mpi::mul_grid_bcast(MPI_mat::MatFile(std::move(lft)),
-                               MPI_mat::MatFile(std::move(rht)),
-                               outmat,
-                               timing);
-
+    MPI_mat::mpi::dot_grid_bcast(lft, rht, outmat);
   else if (method == "row_bcast")
-    MPI_mat::mpi::mul_row_bcast(MPI_mat::MatFile(std::move(lft)),
-                              MPI_mat::MatFile(std::move(rht)),
-                              outmat,
-                              timing);
-
+    MPI_mat::mpi::dot_row_bcast(lft, rht, outmat);
   else if (method == "cannon")
-    MPI_mat::mpi::mul_cannon(MPI_mat::MatFile(std::move(lft)),
-                           MPI_mat::MatFile(std::move(rht)),
-                           outmat,
-                           timing);
-
+    MPI_mat::mpi::dot_cannon(lft, rht, outmat);
   else if (method == "dns")
-    MPI_mat::mpi::mul_dns(MPI_mat::MatFile(std::move(lft)),
-                        MPI_mat::MatFile(std::move(rht)),
-                        outmat,
-                        timing,
-                        vmap["dns_k"].as<int>());
-
-  else
+    MPI_mat::mpi::dot_dns(lft, rht, outmat, dnsK);
+  else {
+    std::cout << "invalid method '" << method << "'." << std::endl;
     return 1;
+  }
 
   auto __finishTotal = MPI_mat::mpi::HRC::now();
-  timing("total", __finishTotal - __startTotal);
-
-  if (timingEnabled) {
-    *soutPtr << '\n';
-    std::cout << soutPtr->str() << std::flush;
-  }
+  MPI_mat::mpi::gTiming("total", __finishTotal - __startTotal);
 
   return 0;
 }
 
-struct SubCmdFunc
+int
+powsum(int argc, char* argv[])
 {
-  const char *name, *info;
-  int (*func)(int argc, char* argv[]);
+  std::uint32_t size = 128, pown = 16;
+  {
+    po::options_description od("'powsum' Options");
+    od.add_options()                                           //
+      ("help,h", "show help info")                             //
+      ("size,s", povd(size), "matrix size (width and height)") //
+      ("pown,p", povd(pown), "power number")                   //
+      ;
+
+    po::variables_map vmap;
+    po::store(po::command_line_parser(argc, argv).options(od).run(), vmap);
+
+    if (vmap.count("help")) {
+      std::cout << od << std::endl;
+      return 0;
+    }
+    po::notify(vmap);
+  }
+
+  if (MPI_mat::mpi::World::g()->mRank == 0)
+    std::cout << "size = " << size << ", pown = " << pown << std::endl;
+  auto __start = My::Timing::Clock::now();
+  auto ans = MPI_mat::mpi::powsum_benchmark(size, pown);
+  auto __end = My::Timing::Clock::now();
+  if (MPI_mat::mpi::World::g()->mRank == 0)
+    std::cout << "ans: " << ans << ", cost: " << (__end - __start) << std::endl;
+
+  return 0;
+}
+
+} // namespace
+
+// ========================================================================== //
+// 主函数
+// ========================================================================== //
+
+namespace {
+
+struct SubCmd
+{
+  const char *mName, *mInfo;
+  int (*mFunc)(int argc, char* argv[]);
 };
 
-const SubCmdFunc kSubCmdFuncs[] = {
-  { "gen", "generate matrix", &gen },
-  { "mul", "multiply matrix", &mul },
+const SubCmd kSubCmds[] = {
+  { "gen", "generate random matrix", &gen },
+  { "dot", "matrix multiplication", &dot },
+  { "powsum", "powsum benchmark", &powsum },
 };
+
+void
+timing_to_cerr(const char* tag, const MPI_mat::mpi::HRC::duration& dura)
+{
+  if (MPI_mat::mpi::World::g()->mRank == 0)
+    std::cerr << tag << ": " << dura << std::endl;
+}
+
+} // namespace
 
 int
 main(int argc, char* argv[])
 try {
+  bool timing = true;
+
   po::options_description od("Options");
-  od.add_options()                          //
-    ("version,v", "print version info")     //
-    ("help,h", "print help info")           //
-    ("...",                                 //
-     po::value<std::vector<std::string>>(), //
-     "sub arguments")                       //
+  od.add_options()                                       //
+    ("version,v", "print version info")                  //
+    ("help,h", "print help info")                        //
+    ("timing,t", povd(timing), "enable internal timing") //
+    ("...",                                              //
+     po::value<std::vector<std::string>>(),              //
+     "other arguments")                                  //
     ;
 
   po::positional_options_description pod;
@@ -203,7 +216,7 @@ try {
   std::vector<std::string> opts{ argv[0] };
   for (int i = 1; i < argc; ++i) {
     if (argv[i][0] == '-')
-      opts.push_back(argv[i]);
+      opts.emplace_back(argv[i]);
     else
       break;
   }
@@ -215,24 +228,13 @@ try {
                   .allow_unregistered()
                   .run();
   po::store(parsed, vmap);
-  po::notify(vmap);
-
-  if (vmap.count("version")) {
-    std::cout << "MPI Multi-Machine Matrix Application"
-                 "\n"
-                 "\nBuilt: " __TIME__ " (" __DATE__ ")"
-                 "\nPGEMM: " PGEMM_VERSION "\n"
-                 "\nCopyright (C) 2023 Yuhao Gu. All Rights Reserved."
-              << std::endl;
-    return 0;
-  }
 
   if (vmap.count("help") || argc == 1) {
     std::cout << od
               << "\n"
                  "Sub Commands:\n";
-    for (auto&& i : kSubCmdFuncs)
-      std::cout << "  " << std::left << std::setw(12) << i.name << i.info
+    for (auto&& i : kSubCmds)
+      std::cout << "  " << std::left << std::setw(12) << i.mName << i.mInfo
                 << '\n';
     std::cout << "\n"
                  "[HINT: use '<subcmd> --help' to get help for sub commands.]\n"
@@ -240,27 +242,41 @@ try {
     return 0;
   }
 
+  if (vmap.count("version")) {
+    std::cout << kVersionInfo << std::endl;
+    return 0;
+  }
+
+  // 如果必须的选项没有指定，在这里会发生错误，因此 version 和 help
+  // 选项要放在前面。
+  po::notify(vmap);
+
+  if (timing)
+    MPI_mat::mpi::gTiming = &timing_to_cerr;
+
+  MPI_mat::mpi::World world;
   if (opts.size() < argc) {
     std::string cmd = argv[opts.size()];
-    for (auto&& i : kSubCmdFuncs) {
-      if (cmd == i.name)
-        return i.func(argc - opts.size(), argv + opts.size());
+    for (auto&& i : kSubCmds) {
+      if (cmd == i.mName)
+        return i.mFunc(argc - opts.size(), argv + opts.size());
     }
     std::cout << "invalid sub command '" << cmd << "'." << std::endl;
     return 1;
   }
 }
 
-catch (MPI_mat::Err& e) {
-  std::cout << "\nERROR! " << e.what() << "\n" << e.info() << std::endl;
+catch (My::Err& e) {
+  std::cout << e.what() << ": " << e.info() << std::endl;
   return -3;
 }
 
 catch (std::exception& e) {
-  std::cout << "\nERROR! " << e.what() << std::endl;
+  std::cout << "Exception: " << e.what() << std::endl;
   return -2;
 }
 
 catch (...) {
+  std::cout << "UNKNOWN EXCEPTION" << std::endl;
   return -1;
 }
